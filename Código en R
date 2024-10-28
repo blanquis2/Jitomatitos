@@ -1,0 +1,195 @@
+ ##Estrés en jitomates cherry##
+
+        #3 tratamientos (hídrico, salino, combinado) y el control#
+
+##Cargar la base de datos##
+
+cherry1
+
+##Objeto sólo con las variables de respuesta continuas##
+
+continuas<-cherry1[c(6:15)]
+continuas
+
+str(cherry1)##Comprobar que las variables que estoy usando son numéricas##
+
+colSums(is.na(cherry1))##Ver que no me falte ningún valor en la base de datos##
+
+
+mxcherry<-as.matrix(continuas)#la volvemos matriz#
+mxcherry
+
+library(stats) #Cargamos el paquete stats donde está la función prcomp#
+
+#1.- Análisis de componentes principales#
+
+pca<-prcomp(mxcherry,scale=TRUE)
+pca
+
+summary(pca) #Ver cuanta variación nos está explicando la combinación#
+screeplot(pca)
+
+#2.- Separar el primer componente principal#
+
+pc1<-pca$x[ ,1] #Tenemos una nueva Y#
+pc1
+
+#3.-Realizamos un ANCOVA para considerar la covariable #
+
+library(gmodels) #Sirve para hacer el análisis#
+library(ggplot2) #Para hacer los gráficos#
+
+ancova<-aov(pc1~tratamiento,cherry1) #el análisis#
+ancova
+
+summary(ancova)#p<0.05 en el tratamiento y la altura 1#
+
+    #3.1.-Ponemos a prueba los supuestos#
+
+plot(ancova) ##No se cumplen los supuestos, se opta por otro análisis##
+
+                         ##Análisis de similitudes##
+
+#Para la hipótesis general: ¿cambian con los distintos tratamientos?#
+
+library(lattice)
+library(permute)
+library(vegan) #Paquete en el que vive anosim#
+
+sim<-anosim(continuas,grouping=cherry1$tratamiento,distance="manhattan")
+sim
+summary(sim) ##Tenemos disimilitud y difierencia significativa entre tratamientos##
+
+##Gráfico para el anosim#
+
+##Uso de ggplot2, se cargó anteriormente##
+
+##Sacar los componentes del objeto (usando el PCA anterior)##
+
+x<-pca$x[ ,1]
+y<-pca$x[ ,2]
+
+#Para el gráfico del análisis de similitud#
+
+fig1<-plot(x,y, xlab = "PC1 (39.53%)", ylab = "PC2 (16.98%)",
+     xlim = c(-5, 4), ylim = c(-3, 4), 
+     abline(h = 0, v = 0, lty = "dotted"))
+ordiellipse(pca,cherry1$tratamiento, conf = 0.95, col = 1:4,label=TRUE)
+(text(x=-2.5, y=3.8, label = "Anosim R=0.7931; P<0.05"))
+fig1+title("Disimilitud de los tratamientos")
+
+                         #Regresiones lineales#
+
+                    #Para ver hipótesis "chiquitas"#
+
+#a) Ver la clorofila ya que es la única variable fisiológica#
+#Se espera que no explique mucho pues desde el PCA parece no tener gran peso#
+
+morfo<-cherry1[c(6,7,10,11)] #Objeto con las variables morfológicas#
+morfo
+
+mor<-as.matrix(morfo)#hacerlo matriz#
+
+pca2<-prcomp(mor,scale=TRUE)#PCA de morfológicas#
+pca2
+
+summary(pca2)
+
+comp1<-pca2$x[ ,1] #Componente 1 separado#
+
+library(gmodels) #para la fución lm#
+
+#Regresión lineal del componente de variables morfológicas con la clorofila a#
+reg<-lm(comp1~clora,cherry1)
+reg 
+
+summary(reg) #Explica 29.85, aunque P<0.05, cuartiles dispares#
+plot(reg)#No cumple los suspuestos, no sirve#
+
+##Intentar con ANOVA##
+
+##Ver outlier extremos##
+
+library(stasts)
+library(raster)
+library(rstatix)
+
+cherry1 %>%
+  group_by(tratamiento) %>%
+  identify_outliers("clora")
+
+#quito el outlier#
+
+cherr<-cherry1[-c(9), ]
+
+#El análisis#
+clorofila<-aov(clora~tratamiento,cherr)
+clorofila
+summary(clorofila)
+
+plot(clorofila) ##Parece que se cumplen...#
+
+            #...Ahora las pruebas post-hoc, prueba de  Tukey#
+
+TukeyHSD(clorofila,ordered = TRUE) ##Todas son significativas, varían menos el sal con combinado##
+
+##Boxplots##
+
+fit3<-ggplot(clorofila, aes(x=tratamiento, y=clora)) + 
+  geom_boxplot(alpha=0.2)+
+  ggtitle("Clorofila a por tratamientos, P<0.05")+
+  xlab("tratamiento")+
+  ylab("clorofila a")
+fit3
+
+#b)Peso de la raíz con peso de la parte aérea#
+#En el PCA son lo que más variación explican#
+
+cherry1 %>%
+  group_by(tratamiento) %>%
+  identify_outliers("pesor")
+
+cherr2<-cherry1[-c(1,2), ]
+
+reg2<-lm(pesoa~pesor,cherr2)
+reg2
+
+summary(reg2) #Explica el 88.44, P<0.05#
+
+f1<- ggplot(cherry1, aes(x=pesor, y=pesoa))+
+  geom_point(pch=1)+
+  geom_smooth(method = lm, se = FALSE)+
+  xlab("Peso de la raiz")+
+  ylab("Peso aéreo")+
+  ggtitle("R²=.8844,P<0.05")
+f1
+
+##Raiz-forma raíz##
+
+tst1<-t.test(pesor~raiz,cherry1)
+tst1
+
+fig2 <- ggplot (cherry1,aes (y=pesor, group =raiz))+
+  geom_boxplot()+
+  ggtitle("Peso de la raíz por forma de la raíz, P<0.05")+
+  xlab("Froma de la raíz")+
+  ylab("Peso de la raíz")
+fig2
+
+#Raiz-turgencia#
+
+tst2<-t.test(pesor~tur,cherry1)
+tst2
+
+fig3 <- ggplot (cherry1,aes (y=pesor, group =tur))+
+  geom_boxplot()+
+  ggtitle("Peso de la raíz por turgencia, P<0.05")+
+  xlab("Turgencia")+
+  ylab("Peso de la raíz")
+fig3
+
+##Citar R##
+citation("raster")
+citation("rstatix")
+citation("vegan")
+
